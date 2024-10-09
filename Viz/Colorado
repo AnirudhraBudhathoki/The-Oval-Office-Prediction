@@ -1,0 +1,105 @@
+getwd()
+setwd("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/Combinestates")
+#Import Libraries
+library(readxl)
+library(shiny)
+library(plotly)
+library(dplyr)
+library(tidyr)
+install.packages("tidyverse")
+
+install.packages("RColorBrewer")
+
+library(ggplot2)
+install.packages("readxl")  # Only run this line if you haven't installed the package
+library(readxl)
+Colorado <- read_excel("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/Colorado.xlsx",sheet = 1)
+# Define server logic required to output a boxplot
+server <- function(input, output, session) {
+  
+  # Import the data
+  nc <- read_excel("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/Colorado.xlsx", 
+                   sheet = 1,col_names = TRUE)
+  
+  
+  # Exclude MOE columns
+  nc1 = nc[,!grepl("MOE$",names(nc))]
+  
+  #Remove rows with totals
+  nc1 = nc1[!grepl("Total population|All people", nc1$Title),]
+  #Check strings or not
+  str(nc1)
+  # Convert district columns to numeric
+  nc1[4:11] <- lapply(nc1[4:11], function(x) as.numeric(as.character(x)))
+  
+  
+  # Unpivot the district columns
+  unpivoted_nc1 = nc1 %>% 
+    pivot_longer(
+      cols =  colnames(nc1)[4:11],
+      names_to = "District",
+      values_to = "Population",
+      values_drop_na = TRUE
+    )
+  #view(unpivoted_nc1)
+  
+  data <- reactive({
+    req(input$sel_Subject)  # Ensure sel_Subject is selected
+    df <- unpivoted_nc1 %>%
+      filter(Subject %in% input$sel_Subject) %>%
+      group_by(District) %>%
+      summarise(Population = sum(Population))  # Sum population
+    df  # Return df at the end of the reactive block
+  })
+  
+  observe({
+    updateSelectInput(session, "sel_Subject", choices = unpivoted_nc1$Subject)
+  })
+  #Create the plot
+  output$plot <- renderPlot({
+    ggplot(data(), aes(x = District, y = Population, fill = District)) +
+      geom_bar(stat = "identity") +  # Use geom_bar with stat = "identity" to plot total populations
+      scale_fill_brewer(palette = "Set3") +  # Use a colorful palette
+      theme_minimal() +  # A clean theme
+      labs(title = "Population by District", x = "District", y = "Population") +  # Add labels
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better visibility
+  }) 
+  
+ 
+  
+}
+
+ui <- basicPage(
+  tags$style(HTML("
+    .selectize-input {
+      background-color: #f0f8ff;
+      color: #000;
+    }
+    .selectize-dropdown {
+      background-color: #ffffff;
+      border: 1px solid #ccc;
+    }
+    .selectize-dropdown .item {
+      color: #000;
+      background-color: #e0f7fa;
+    }
+    .selectize-dropdown .item:hover {
+      background-color: #b2ebf2;
+    }
+    .selectize-dropdown .active {
+      background-color: #80deea;
+      color: #fff;
+    }
+  ")),
+  h4("Dynamic Comparison of Voting Influencers Across Districts"),
+  selectInput(inputId = "sel_Subject",
+              label = "Choose Subject",
+              choices = "Names",
+              multiple = TRUE,  # allow multiple selections if needed
+  ),  
+  plotOutput("plot")
+  
+)
+
+# Run the application 
+shinyApp(ui = ui, server = server)
