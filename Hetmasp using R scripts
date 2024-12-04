@@ -1,0 +1,95 @@
+loadfonts(device = "pdf")  # or device = "win" for Windows
+fonts()  # Lists all available fonts
+install.packages("ggplot2")
+
+# Load libraries
+library(ggplot2)
+install.packages("plotly")
+library(plotly)
+install.packages("dplyr")
+install.packages("reshape2")
+install.packages("plotly")
+
+
+
+
+
+library(extrafont)
+ggsave("heatmap.pdf")  # Save as PDF
+
+library(dplyr)
+
+library(dplyr)
+library(reshape2)
+library(plotly)
+
+
+
+count_data1 <- data %>%
+  group_by(IndustrySector, LeadingParty) %>%
+  summarize(count = n(), .groups = "drop")
+print(count_data1)
+
+# Reshape data for heatmap, with aggregation
+heatmap_data <- dcast(count_data1,IndustrySector  ~ LeadingParty, value.var = "count", fun.aggregate = sum, fill=0)
+# Melt the reshaped data back for ggplot
+heatmap_melted <- melt(heatmap_data, id.vars = "IndustrySector", variable.name = "LeadingParty", value.name = "count")
+
+# Create the heatmap
+heatmap_plot<-ggplot(heatmap_melted, aes(x = LeadingParty, y = IndustrySector, fill = count)) +
+  geom_tile() +
+  geom_text(aes(label = round(count, 1)), color = "white", size = 5) +  # Add this line  
+  scale_fill_gradient(low = "green", high = "red") +
+  labs(title = "Heatmap of Industry Sector by Leading Party",
+       x = "Leading Party",
+       y = "Industry Sector") +
+  theme_minimal()+
+  geom_text(aes(label = round(count, 1)), color = "white", size = 5) +  # Add this line
+  theme(
+    axis.title.y = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),# Customize y-axis label
+    axis.title.x = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),
+    axis.text.y = element_text(size = 14, face = "bold"),# Change y-axis text size
+    axis.text.x = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, angle = 0)
+  )
+# Convert to interactive plot
+interactive_heatmap <- ggplotly(heatmap_plot, tooltip = c("LeadingParty", "IndustrySector", "count"))
+
+# Print the interactive plot
+interactive_heatmap
+
+
+count_data2 <- data %>%
+  group_by(EmploymentStatus, LeadingParty) %>%
+  summarize(count = n(), .groups = "drop")
+
+# Reshape data for heatmap, with aggregation
+heatmap_data <- dcast(count_data, EmploymentStatus ~ LeadingParty, value.var = "count", fun.aggregate = sum, fill = 0)
+
+# Melt the reshaped data back for ggplot
+heatmap_melted <- melt(heatmap_data, id.vars = "EmploymentStatus", variable.name = "LeadingParty", value.name = "count")
+
+# Create the heatmap
+heatmap_plot<-ggplot(heatmap_melted, aes(x = LeadingParty, y = EmploymentStatus, fill = count)) +
+  geom_tile() +
+  geom_text(aes(label = round(count, 1)), color = "white", size = 5) +  # Add this line  
+  
+  scale_fill_gradient(low = "red", high = "black") +
+  labs(title = "Heatmap of Employment Status by Leading Party",
+       x = "Leading Party",
+       y = "Employment Status") +
+  theme_minimal()+
+  theme(
+    axis.title.y = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),# Customize y-axis label
+    axis.title.x = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),
+    axis.text.y = element_text(size = 14, face = "bold"),# Change y-axis text size
+    axis.text.x = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, angle = 0)
+  )
+# Convert to interactive plot
+interactive_heatmap <- ggplotly(heatmap_plot, tooltip = c("LeadingParty", "IndustrySector", "count"))
+
+# Print the interactive plot
+interactive_heatmap
+
+
