@@ -1,0 +1,60 @@
+getwd()
+setwd("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/New folder/Target")
+data <- read.csv("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/New folder/Target/oval_office.csv")
+
+install.packages("readxl")  # Only run this line if you haven't installed the package
+library(readxl)
+
+# Install packages if you haven't already
+install.packages("ggplot2")
+install.packages("extrafont")
+
+install.packages("dplyr")
+install.packages("reshape2")  # For reshaping data
+loadfonts(device = "pdf")  # or device = "win" for Windows
+fonts()  # Lists all available fonts
+
+
+# Load libraries
+library(ggplot2)
+library(extrafont)
+
+library(dplyr)
+library(reshape2)
+install.packages("plotly")
+
+library(plotly)
+
+
+count_data3 <- data %>%
+  group_by(IndustrySector, EmploymentStatus) %>%
+  summarize(count = n(), .groups = "drop")
+
+print(count_data3)
+# Reshape data for heatmap, with aggregation
+heatmap_data <- dcast(count_data3,IndustrySector  ~ EmploymentStatus, value.var = "count", fun.aggregate = sum, fill=0)
+# Melt the reshaped data back for ggplot
+heatmap_melted <- melt(heatmap_data, id.vars = "IndustrySector", variable.name = "EmploymentStatus", value.name = "count")
+
+# Create the heatmap
+heatmap_plot<-ggplot(heatmap_melted, aes(x = EmploymentStatus, y = IndustrySector, fill = count)) +
+  geom_tile() +
+ # geom_text(aes(label = round(count, 1)), color = "white", size = 5) +  # Add this line  
+  
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Heatmap of Industry Sector and Employement Sector by Leading Party",
+       x = "EmploymentStatus",
+       y = "Industry Sector") +
+  theme_minimal()+
+  theme(
+    axis.title.y = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),# Customize y-axis label
+    axis.title.x = element_text(family = "Arial", face = "bold", size = 14, color = "blue"),
+    axis.text.y = element_text(size = 14, face = "bold"),# Change y-axis text size
+    axis.text.x = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, angle = 0)
+  )
+# Convert to interactive plot
+interactive_heatmap <- ggplotly(heatmap_plot, tooltip = c("LeadingParty", "IndustrySector", "count"))
+
+# Print the interactive plot
+interactive_heatmap
