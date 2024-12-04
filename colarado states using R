@@ -1,0 +1,52 @@
+getwd()
+setwd("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/New folder/finalColorado")
+
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("tidyr")  # Required for pivot_longer
+install.packages("shiny")
+
+install.packages("ggplot2")
+install.packages("readxl")  # Only run this line if you haven't installed the package
+library(readxl)
+library(readxl)
+library(shiny)
+library(plotly)
+library(dplyr)
+library(readr)
+library(tidyr)
+finalcolarado <- read_csv("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/New folder/FinalColorado.csv",show_col_types = FALSE)
+# Import the data
+nc <- read_csv("D:/usersDESKTOP-ID246HMUsers/Desktop/Step2/New folder/FinalColorado.csv",show_col_types = FALSE)
+
+# Exclude MOE columns
+nc1 = nc[,!grepl("DisabilityStatus$|HealthCoverage$|Count$|MortgageStatus$",names(nc))]
+
+#Remove rows with totals
+nc1 = nc1[!grepl("Total population|All people", nc1$Title),]
+
+
+str(nc1)
+
+# Specify the specific columns you want to unpivot
+Party_columns <- c("LeadingParty", "TargetParty")  # Example: choose specific columns
+# Unpivot the district columns
+unpivoted_nc1 = nc1 %>% 
+  pivot_longer(
+    cols =  all_of(Party_columns),
+    names_to = "LeadingParty",
+    values_to = "TargetParty",
+    values_drop_na = TRUE
+)
+
+view(unpivoted_nc1)
+
+data <- reactive({
+  req(input$sel_Subject)  # Ensure sel_Subject is selected
+  df <- unpivoted_nc1 %>%
+    filter(Subject %in% input$sel_Subject) %>%
+    group_by(District) %>%
+    summarise(Population = sum(LeadingParty))  # Sum population
+  df  # Return df at the end of the reactive block
+})
+
