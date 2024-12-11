@@ -1,0 +1,403 @@
+# Install necessary packages (run these once)
+install.packages("shiny")
+install.packages("shinythemes")
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("DT")
+install.packages("plotly")
+install.packages("urbnmapr")
+install.packages("writexl")
+install.packages("archive")
+install.packages("tigris")
+install.packages("sf")
+install.packages("devtools")
+devtools::install_github("UrbanInstitute/urbnmapr")
+install.packages("vroom")
+install.packages("readr")
+
+# Load necessary libraries
+library(shiny)
+library(shinythemes)
+library(ggplot2)
+library(dplyr)
+library(DT)
+library(plotly)
+library(urbnmapr)
+library(writexl)
+library(archive)
+library(tigris)
+library(sf)
+library(vroom)
+library(readr)
+
+# Set your working directory to the folder where your CSV files are stored
+setwd("C:/Users/aniru/OneDrive/Desktop/New folder")
+
+# Import datasets
+data_2020 <- read.csv("2020_presidential_election.csv")
+data_2023 <- read.csv("2023_presidential_election.csv")
+predvsactual <- read.csv("Prediction_results(in).csv")
+
+# Load the shapes for US states
+states_sf <- get_urbn_map(map = "states", sf = TRUE)
+
+# Exclude District of Columbia
+states_sf <- states_sf %>% filter(state_name != "District of Columbia")
+
+# Rename the State to state_name to match the shapefile column
+predvsactual <- predvsactual %>% rename("state_name" = "State")
+
+# Join both sf and predvsactual tables on state_name
+pred_vs_actual <- left_join(states_sf, predvsactual, by = "state_name")
+
+# Use st_centroid to get central coordinates representative
+states_sf$centroid <- st_centroid(pred_vs_actual)
+coordinates_ <- st_coordinates(states_sf$centroid)
+
+# Add coordinates to pred_vs_actual
+pred_vs_actual$Longitude = coordinates_[, "X"]
+pred_vs_actual$Latitude = coordinates_[, "Y"]
+
+# Define a mapping for metrics with meaningful names
+metric_mapping <- c(
+  "EMPLOYMENTStatusPeople16YearsAndOverInLaborForceCivilianLaborForceUnemployedUnemploymentRateInPercent" = "Unemployment Rate (%)",
+  "INCOMEInThePast12Months_PastYearInflation_AdjustedDollars_HouseholdsMedianHouseholdIncome_Dollars_" = "Median Household Income (Dollars)",
+  "POVERTYRatesForFamiliesAndPeopleForWhomPovertyStatusIsDeterminedAllPeopleInPercent" = "Poverty Rate (%)",
+  "INCOMEInThePast12Months_PastYearInflation_AdjustedDollars_IndividualsPerCapitaIncome_Dollars_" = "Per Capita Income (Dollars)"
+)
+
+# Define UI
+ui <- navbarPage(
+  title = "Dashboard",
+  theme = shinytheme("flatly"),
+  
+  # Custom CSS
+  tags$style(HTML("
+    .navbar .navbar-brand, .navbar-default .navbar-brand {
+      color: white !important;
+      font-size: 24px !important; /* Increase the font size */
+      font-weight: bold;
+    }
+  ")),
+  
+  # Overview Tab with Year and State filters
+  tabPanel("Overview",
+           sidebarLayout(
+             sidebarPanel(
+               width = 3, 
+               checkboxGroupInput("year_overview", "Select Year:", choices = c("2020", "2023"), selected = c("2020")),
+               selectInput("state_overview", "Select State:", 
+                           choices = unique(data_2020$State), 
+                           selected = unique(data_2020$State), multiple = TRUE)
+             ),
+             mainPanel(
+               width = 9, 
+               h3("Election Overview"),
+               plotlyOutput("overview_plot"),
+               DTOutput("overview_table")
+             )
+           )
+  ),
+  
+  # Comparison Tab
+  tabPanel("Comparison",
+           sidebarLayout(
+             sidebarPanel(
+               width = 3,
+               selectInput("state_comparison", "Select State:", 
+                           choices = unique(data_2020$State), 
+                           selected = "California", 
+                           multiple = TRUE),
+               selectInput("metric", "Metric for Comparison", 
+                           choices = setNames(names(metric_mapping), metric_mapping), 
+                           selected = "EMPLOYMENTStatusPeople16YearsAndOverInLaborForceCivilianLaborForceUnemployedUnemploymentRateInPercent")
+             ),
+             mainPanel(
+               width = 9,
+               h3("State Comparison"),
+               plotlyOutput("comparison_plot")
+             )
+           )
+  ),
+  
+  # Demographics Tab
+  tabPanel("Demographics",
+           sidebarLayout(
+             sidebarPanel(
+               width = 3,
+               selectInput("state_demographics", "Select State:", 
+                           choices = unique(data_2020$State), 
+                           selected = "California", 
+                           multiple = TRUE),
+               selectInput("metric_demographics", "Select Metric:", 
+                           choices = c(
+                             "Male Population (%)" = "SEXAndAgeTotalPeopleMaleInPercent",
+                             "Female Population (%)" = "SEXAndAgeTotalPeopleFemaleInPercent",
+                             "Population Under 18 Years" = "SEXAndAgeTotalPeopleUnder18Years",
+                             "Population Over 65 Years" = "SEXAndAgeTotalPeople65YearsAndOver",
+                             "Median Age" = "SEXAndAgeTotalPeopleMedianAge_Years_"
+                           ),
+                           selected = "SEXAndAgeTotalPeopleMaleInPercent"
+               ),
+             ),
+             mainPanel(
+               width = 9,
+               plotlyOutput("demographics_plot")
+             )
+           )
+  ),
+  
+  # Map Tab for Predicted vs Actual Results
+  tabPanel("Choropleth Maps",
+           sidebarLayout(
+             sidebarPanel(
+               h3("Interactive Election Results"),
+               selectInput("mapType", "Choose Map:", choices = c("Predicted Party", "Actual Party"), selected = "Predicted Party"),
+               h4("State Counts:"),
+               textOutput("stateCountText")  # Add this to display state counts
+             ),
+             mainPanel(
+               plotlyOutput("electionMap")
+             )
+           )
+  ),
+  
+  # Dynamic theme and font size CSS
+  tags$head(
+    uiOutput("theme_css")
+  )
+)
+
+# Define server logic
+server <- function(input, output, session) {
+  # Apply selected theme and font size dynamically
+  output$theme_css <- renderUI({
+    font_size_css <- switch(input$font_size, 
+                            "Small" = "font-size: 12px;", 
+                            "Medium" = "font-size: 16px;", 
+                            "Large" = "font-size: 20px;")
+    
+    # Define CSS for dark and light themes
+    theme_css <- if (input$theme == "Dark") {
+      "
+      body, .navbarPage, .container-fluid, .navbar, .tab-pane, .sidebarPanel, .mainPanel, .dataTables_wrapper, .selectize-input, .tab-content, .well, .shiny-output-error, .shiny-input-container {
+        background-color: #2b2b2b !important;
+        color: #e0e0e0 !important;
+      }
+      .navbar, .sidebarPanel {
+        background-color: #333333 !important;
+      }
+      .tab-content, .mainPanel, .dataTables_wrapper {
+        background-color: #2b2b2b !important;
+        color: #e0e0e0;
+      }
+      .btn, .btn-default, .form-control {
+        background-color: #444444 !important;
+        color: #e0e0e0 !important;
+        border-color: #555555 !important;
+      }
+      label, p, h3, .dt-button {
+        color: #e0e0e0 !important;
+      }
+      .navbar-brand {
+        color: inherit !important;
+      }
+      "
+    } else {
+      "
+      body, .navbarPage, .container-fluid, .navbar, .tab-pane, .sidebarPanel, .mainPanel, .dataTables_wrapper, .selectize-input, .tab-content, .well, .shiny-output-error, .shiny-input-container {
+        background-color: #ffffff !important;
+        color: #333333 !important;
+      }
+      .navbar, .sidebarPanel {
+        background-color: #f8f9fa !important;
+      }
+      .tab-content, .mainPanel, .dataTables_wrapper {
+        background-color: #ffffff !important;
+        color: #333333;
+      }
+      .btn, .btn-default, .form-control {
+        background-color: #ffffff !important;
+        color: #333333 !important;
+        border-color: #cccccc !important;
+      }
+      label, p, h3, .dt-button {
+        color: #333333 !important;
+      }
+      .navbar-brand {
+        color: inherit !important;
+      }
+      "
+    }
+    
+    tags$style(HTML(paste0("
+      .container-fluid {", font_size_css, theme_css, "}
+      h3, p, label, .btn, .navbar-brand {", font_size_css, "}
+    ")))
+  })
+  
+  # Reactive data based on selected year and states for overview
+  filtered_data <- reactive({
+    selected_data <- bind_rows(
+      if ("2020" %in% input$year_overview) data_2020 %>% mutate(Year = "2020") else NULL,
+      if ("2023" %in% input$year_overview) data_2023 %>% mutate(Year = "2023") else NULL
+    ) %>% filter(State %in% input$state_overview)
+    selected_data
+  })
+  
+  # Overview plot
+  output$overview_plot <- renderPlotly({
+    rotate_labels <- ifelse(length(input$state_overview) > 8, 45, 0)
+    
+    plot_data <- filtered_data() %>%
+      ggplot(aes(x = State, y = ScoreAverage, fill = Year)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      theme_minimal() +
+      labs(title = "Average Scores by State", x = "State", y = "Score Average", fill = "Year") +
+      theme(axis.text.x = element_text(angle = rotate_labels, vjust = ifelse(rotate_labels == 45, 1, 1), hjust = ifelse(rotate_labels == 45, 1, 0.5), size = 10))
+    
+    ggplotly(plot_data)
+  })
+  
+  # Overview table
+  output$overview_table <- renderDT({
+    filtered_data() %>%
+      select(State, ScoreAverage, ScoreSum, Year)
+  })
+  
+  # Comparison plot
+  output$comparison_plot <- renderPlotly({
+    selected_metric <- input$metric
+    rotate_labels <- ifelse(length(input$state_comparison) > 8, 45, 0)
+    
+    comparison_data <- bind_rows(
+      data_2020 %>% mutate(Year = "2020"),
+      data_2023 %>% mutate(Year = "2023")
+    ) %>%
+      filter(State %in% input$state_comparison)
+    
+    plot_comparison <- comparison_data %>%
+      ggplot(aes(x = State, y = !!sym(selected_metric), fill = Year)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      labs(
+        title = "State Comparison",
+        x = "State",
+        y = metric_mapping[selected_metric]
+      ) +
+      theme_minimal()
+    
+    ggplotly(plot_comparison)
+  })
+  
+  # Demographics plot
+  output$demographics_plot <- renderPlotly({
+    demographics_data <- bind_rows(
+      data_2020 %>% mutate(Year = "2020"),
+      data_2023 %>% mutate(Year = "2023")
+    )
+    
+    filtered_data <- demographics_data %>%
+      filter(State %in% input$state_demographics)
+    
+    selected_metric <- input$metric_demographics
+    plot_demographics <- filtered_data %>%
+      ggplot(aes(x = State, y = !!sym(selected_metric), fill = Year)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      labs(title = paste("Demographics: ", selected_metric), x = "State", y = selected_metric) +
+      theme_minimal()
+    
+    ggplotly(plot_demographics)
+  })
+  
+  # Election map plot
+  output$electionMap <- renderPlotly({
+    map_data <- if(input$mapType == "Predicted Party") {
+      ggplot(pred_vs_actual) +
+        geom_sf(aes(fill = Predicted.Party, geometry = geometry), color = "white") +
+        geom_text(aes(x = Longitude, y = Latitude, label = state_abbv), colour = "white") +
+        scale_fill_manual("Predicted Party", values = c("Democrat" = "#007bff", "Republican" = "#dc143c")) +
+        ggtitle("U.S Elections 2024 - Predicted Parties") +
+        theme_minimal() +
+        theme(
+          panel.background = element_blank(),
+          panel.grid = element_blank()
+        )
+    } else {
+      ggplot(pred_vs_actual) +
+        geom_sf(aes(fill = Actual.Party, geometry = geometry), color = "white") +
+        geom_text(aes(x = Longitude, y = Latitude, label = state_abbv), colour = "white") +
+        scale_fill_manual("Actual Party", values = c("Democrat" = "#007bff", "Republican" = "#dc143c")) +
+        ggtitle("U.S Elections 2024 - Actual Result") +
+        theme_minimal() +
+        theme(
+          panel.background = element_blank(),
+          panel.grid = element_blank()
+        )
+    }
+   
+  })
+
+  # Function to calculate state counts based on predicted or actual party
+  state_counts <- reactive({
+    map_column <- if(input$mapType == "Predicted Party") {
+      "Predicted.Party"
+    } else {
+      "Actual.Party"
+    }
+    
+    state_counts <- pred_vs_actual %>%
+      group_by_at(map_column) %>%
+      summarize(state_count = n()) %>%
+      ungroup()
+    
+    state_counts
+  })
+  
+  # Display the counts of Democratic and Republican states in the UI
+  output$stateCountText <- renderText({
+    state_counts_data <- state_counts()
+    
+    # Extract counts for Democratic and Republican
+    democrat_count <- state_counts_data %>%
+      filter(get(if(input$mapType == "Predicted Party") "Predicted.Party" else "Actual.Party") == "Democrat") %>%
+      pull(state_count)
+    
+    republican_count <- state_counts_data %>%
+      filter(get(if(input$mapType == "Predicted Party") "Predicted.Party" else "Actual.Party") == "Republican") %>%
+      pull(state_count)
+    
+    paste("Democratic States: ", democrat_count, "\nRepublican States: ", republican_count)
+  })
+  
+  # Election map plot
+  output$electionMap <- renderPlotly({
+    map_data <- if(input$mapType == "Predicted Party") {
+      ggplot(pred_vs_actual) +
+        geom_sf(aes(fill = Predicted.Party, geometry = geometry), color = "white") +
+        geom_text(aes(x = Longitude, y = Latitude, label = state_abbv), colour = "white") +
+        scale_fill_manual("Predicted Party", values = c("Democrat" = "#007bff", "Republican" = "#dc143c")) +
+        ggtitle("U.S Elections 2024 - Predicted Parties") +
+        theme_minimal() +
+        theme(
+          panel.background = element_blank(),
+          panel.grid = element_blank()
+        )
+    } else {
+      ggplot(pred_vs_actual) +
+        geom_sf(aes(fill = Actual.Party, geometry = geometry), color = "white") +
+        geom_text(aes(x = Longitude, y = Latitude, label = state_abbv), colour = "white") +
+        scale_fill_manual("Actual Party", values = c("Democrat" = "#007bff", "Republican" = "#dc143c")) +
+        ggtitle("U.S Elections 2024 - Actual Result") +
+        theme_minimal() +
+        theme(
+          panel.background = element_blank(),
+          panel.grid = element_blank()
+        )
+    }
+    ggplotly(map_data)
+  })
+}
+
+
+# Run the Shiny app
+shinyApp(ui = ui, server = server)
